@@ -17,16 +17,16 @@ for reviewerID, hist in reviews_df.groupby('reviewerID'):
     while neg in pos_list:
       neg = random.randint(0, item_count-1)
     return neg
-  neg_list = [gen_neg() for i in range(len(pos_list))]
+  neg_list = [gen_neg() for i in range(len(pos_list))]  # get negative item list
 
   for i in range(1, len(pos_list)):
     hist = pos_list[:i]
     if i != len(pos_list) - 1:
-      train_set.append((reviewerID, hist, pos_list[i], 1))
+      train_set.append((reviewerID, hist, pos_list[i], 1))  # hist: all the previous reviewed items before item i
       train_set.append((reviewerID, hist, neg_list[i], 0))
     else:
       label = (pos_list[i], neg_list[i])
-      test_set.append((reviewerID, hist, label))
+      test_set.append((reviewerID, hist, label))  # test set add all the reviewed items
 
 random.shuffle(train_set)
 random.shuffle(test_set)

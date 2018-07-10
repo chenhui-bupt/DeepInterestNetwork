@@ -25,7 +25,7 @@ class Model(object):
     cate_emb_w = tf.get_variable("cate_emb_w", [cate_count, hidden_units // 2])
     cate_list = tf.convert_to_tensor(cate_list, dtype=tf.int64)
 
-    u_emb = tf.nn.embedding_lookup(user_emb_w, self.u)
+    u_emb = tf.nn.embedding_lookup(user_emb_w, self.u)  # (,hidden_units) 1-D
 
     ic = tf.gather(cate_list, self.i)
     i_emb = tf.concat(values = [
@@ -47,53 +47,53 @@ class Model(object):
         tf.nn.embedding_lookup(cate_emb_w, hc),
         ], axis=2)
 
-    #-- sum begin -------
-    mask = tf.sequence_mask(self.sl, tf.shape(h_emb)[1], dtype=tf.float32) # [B, T]
-    mask = tf.expand_dims(mask, -1) # [B, T, 1]
-    mask = tf.tile(mask, [1, 1, tf.shape(h_emb)[2]]) # [B, T, H]
-    h_emb *= mask # [B, T, H]
+    #-- sum begin -------  SUM Pooling
+    mask = tf.sequence_mask(self.sl, tf.shape(h_emb)[1], dtype=tf.float32)  # [B, T] mask sequence with max length
+    mask = tf.expand_dims(mask, -1)  # [B, T, 1]
+    mask = tf.tile(mask, [1, 1, tf.shape(h_emb)[2]])  # [B, T, H] multiples
+    h_emb *= mask  # [B, T, H]  mask filter
     hist = h_emb
-    hist = tf.reduce_sum(hist, 1) 
+    hist = tf.reduce_sum(hist, 1)  # sum on this axis, reduce one axis
     hist = tf.div(hist, tf.cast(tf.tile(tf.expand_dims(self.sl,1), [1,128]), tf.float32))
-    print h_emb.get_shape().as_list()
+    print(h_emb.get_shape().as_list())
     #-- sum end ---------
     
-    hist = tf.layers.batch_normalization(inputs = hist)
+    hist = tf.layers.batch_normalization(inputs=hist)
     hist = tf.reshape(hist, [-1, hidden_units])
-    hist = tf.layers.dense(hist, hidden_units)
+    hist = tf.layers.dense(hist, hidden_units)  # full connected layer
 
     u_emb = hist
     #-- fcn begin -------
-    din_i = tf.concat([u_emb, i_emb], axis=-1)
+    din_i = tf.concat([u_emb, i_emb], axis=-1)  # concat user emb and item i emb on axis -1, the shape of return tensor its axis -1 is added
     din_i = tf.layers.batch_normalization(inputs=din_i, name='b1')
     d_layer_1_i = tf.layers.dense(din_i, 80, activation=tf.nn.sigmoid, name='f1')
     d_layer_2_i = tf.layers.dense(d_layer_1_i, 40, activation=tf.nn.sigmoid, name='f2')
     d_layer_3_i = tf.layers.dense(d_layer_2_i, 1, activation=None, name='f3')
-    din_j = tf.concat([u_emb, j_emb], axis=-1)
+    din_j = tf.concat([u_emb, j_emb], axis=-1)  # concat user emb and item j emb
     din_j = tf.layers.batch_normalization(inputs=din_j, name='b1', reuse=True)
     d_layer_1_j = tf.layers.dense(din_j, 80, activation=tf.nn.sigmoid, name='f1', reuse=True)
     d_layer_2_j = tf.layers.dense(d_layer_1_j, 40, activation=tf.nn.sigmoid, name='f2', reuse=True)
     d_layer_3_j = tf.layers.dense(d_layer_2_j, 1, activation=None, name='f3', reuse=True)
-    d_layer_3_i = tf.reshape(d_layer_3_i, [-1])
-    d_layer_3_j = tf.reshape(d_layer_3_j, [-1])
-    x = i_b - j_b + d_layer_3_i - d_layer_3_j # [B]
+    d_layer_3_i = tf.reshape(d_layer_3_i, [-1])  # [-1] represent flatten tensor to 1-D
+    d_layer_3_j = tf.reshape(d_layer_3_j, [-1])  # flatten to 1-D
+    x = i_b - j_b + d_layer_3_i - d_layer_3_j  # [B]
     self.logits = i_b + d_layer_3_i
-    u_emb_all = tf.expand_dims(u_emb, 1)
-    u_emb_all = tf.tile(u_emb_all, [1, item_count, 1])
+    u_emb_all = tf.expand_dims(u_emb, 1)  # expand a dim on axis 1
+    u_emb_all = tf.tile(u_emb_all, [1, item_count, 1])  # replicate item_count times on axis 1
     # logits for all item:
     all_emb = tf.concat([
         item_emb_w,
         tf.nn.embedding_lookup(cate_emb_w, cate_list)
-        ], axis=1)
-    all_emb = tf.expand_dims(all_emb, 0)
-    all_emb = tf.tile(all_emb, [512, 1, 1])
+        ], axis=1)  # all emb is: item emb and its cate emb of all items, shape = (item_count, item_emb_size + cate_emb_size)
+    all_emb = tf.expand_dims(all_emb, 0)  # expand a dim on axis 0
+    all_emb = tf.tile(all_emb, [512, 1, 1])  # replicate 512 times of axis 0, 1 times of axis 1, and 1 times of axis 2
     din_all = tf.concat([u_emb_all, all_emb], axis=-1)
     din_all = tf.layers.batch_normalization(inputs=din_all, name='b1', reuse=True)
     d_layer_1_all = tf.layers.dense(din_all, 80, activation=tf.nn.sigmoid, name='f1', reuse=True)
     d_layer_2_all = tf.layers.dense(d_layer_1_all, 40, activation=tf.nn.sigmoid, name='f2', reuse=True)
     d_layer_3_all = tf.layers.dense(d_layer_2_all, 1, activation=None, name='f3', reuse=True)
     d_layer_3_all = tf.reshape(d_layer_3_all, [-1, item_count])
-    self.logits_all = tf.sigmoid(item_b + d_layer_3_all)
+    self.logits_all = tf.sigmoid(item_b + d_layer_3_all)  # broadcasting: 矩阵和向量相加
     #-- fcn end -------
 
     
@@ -102,14 +102,14 @@ class Model(object):
     self.score_j = tf.sigmoid(j_b + d_layer_3_j)
     self.score_i = tf.reshape(self.score_i, [-1, 1])
     self.score_j = tf.reshape(self.score_j, [-1, 1])
-    self.p_and_n = tf.concat([self.score_i, self.score_j], axis=-1)
-    print self.p_and_n.get_shape().as_list()
+    self.p_and_n = tf.concat([self.score_i, self.score_j], axis=-1)  # positive and negative sample
+    print(self.p_and_n.get_shape().as_list())
 
 
     # Step variable
     self.global_step = tf.Variable(0, trainable=False, name='global_step')
     self.global_epoch_step = \
-        tf.Variable(0, trainable=False, name='global_epoch_step')
+        tf.Variable(0, trainable=False, name='global_epoch_step')  # init epoch to 0
     self.global_epoch_step_op = \
         tf.assign(self.global_epoch_step, self.global_epoch_step+1)
 
@@ -119,12 +119,12 @@ class Model(object):
             labels=self.y)
         )
 
-    trainable_params = tf.trainable_variables()
+    trainable_params = tf.trainable_variables()  # return all the variables created with "trainable=True"
     self.opt = tf.train.GradientDescentOptimizer(learning_rate=self.lr)
-    gradients = tf.gradients(self.loss, trainable_params)
-    clip_gradients, _ = tf.clip_by_global_norm(gradients, 5)
+    gradients = tf.gradients(self.loss, trainable_params)  # calculate gradients of ys on xs
+    clip_gradients, _ = tf.clip_by_global_norm(gradients, 5)  # clip ratio: clip_norm/max(clip_norm, global_norm), clip_norm=5
     self.train_op = self.opt.apply_gradients(
-        zip(clip_gradients, trainable_params), global_step=self.global_step)
+        zip(clip_gradients, trainable_params), global_step=self.global_step)  # apply gradients on vars把梯度应用到变量上去
 
 
   def train(self, sess, uij, l):

@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-from Dice import dice
+from din.Dice import dice
 
 class Model(object):
 
@@ -53,9 +53,9 @@ class Model(object):
     hist = tf.layers.dense(hist, hidden_units)
 
     u_emb = hist
-    print u_emb.get_shape().as_list()
-    print i_emb.get_shape().as_list()
-    print j_emb.get_shape().as_list()
+    print(u_emb.get_shape().as_list())
+    print(i_emb.get_shape().as_list())
+    print(j_emb.get_shape().as_list())
     #-- fcn begin -------
     din_i = tf.concat([u_emb, i_emb], axis=-1)
     din_i = tf.layers.batch_normalization(inputs=din_i, name='b1')
