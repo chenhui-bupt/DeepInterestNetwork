@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-from din.Dice import dice
+from Dice import dice
 
 class Model(object):
 
