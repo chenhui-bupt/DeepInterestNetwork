@@ -31,7 +31,7 @@ print('user_count: %d\titem_count: %d\tcate_count: %d\texample_count: %d' %
 meta_df = meta_df.sort_values('asin')
 meta_df = meta_df.reset_index(drop=True)
 reviews_df['asin'] = reviews_df['asin'].map(lambda x: asin_map[x])
-reviews_df = reviews_df.sort_values(['reviewerID', 'unixReviewTime'])
+reviews_df = reviews_df.sort_values(['reviewerID', 'unixReviewTime'])  # presort is very important for build hist list
 reviews_df = reviews_df.reset_index(drop=True)
 reviews_df = reviews_df[['reviewerID', 'asin', 'unixReviewTime']]
 

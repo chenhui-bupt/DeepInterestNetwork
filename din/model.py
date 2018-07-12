@@ -6,13 +6,13 @@ class Model(object):
 
   def __init__(self, user_count, item_count, cate_count, cate_list):
 
-    self.u = tf.placeholder(tf.int32, [None,]) # [B]
-    self.i = tf.placeholder(tf.int32, [None,]) # [B]
-    self.j = tf.placeholder(tf.int32, [None,]) # [B]
-    self.y = tf.placeholder(tf.float32, [None,]) # [B]
-    self.hist_i = tf.placeholder(tf.int32, [None, None]) # [B, T]
-    self.sl = tf.placeholder(tf.int32, [None,]) # [B]
-    self.lr = tf.placeholder(tf.float64, [])
+    self.u = tf.placeholder(tf.int32, [None, ])  # [B] B=batch_size
+    self.i = tf.placeholder(tf.int32, [None, ])  # [B]  # pos sample
+    self.j = tf.placeholder(tf.int32, [None, ])  # [B]  # neg sample
+    self.y = tf.placeholder(tf.float32, [None, ])  # [B]  # label
+    self.hist_i = tf.placeholder(tf.int32, [None, None])  # [B, T]  # history list, T=max(sl)
+    self.sl = tf.placeholder(tf.int32, [None, ])  # [B]  # history length
+    self.lr = tf.placeholder(tf.float64, [])  # learning rate
 
     hidden_units = 128
 
@@ -25,30 +25,30 @@ class Model(object):
 
     u_emb = tf.nn.embedding_lookup(user_emb_w, self.u)
 
-    ic = tf.gather(cate_list, self.i)
-    i_emb = tf.concat(values = [
+    ic = tf.gather(cate_list, self.i)  # item i category
+    i_emb = tf.concat(values=[   # concat item emb and cate emb together
         tf.nn.embedding_lookup(item_emb_w, self.i),
         tf.nn.embedding_lookup(cate_emb_w, ic),
         ], axis=1)
     i_b = tf.gather(item_b, self.i)
 
-    jc = tf.gather(cate_list, self.j)
+    jc = tf.gather(cate_list, self.j)  # item j category
     j_emb = tf.concat([
         tf.nn.embedding_lookup(item_emb_w, self.j),
         tf.nn.embedding_lookup(cate_emb_w, jc),
         ], axis=1)
     j_b = tf.gather(item_b, self.j)
 
-    hc = tf.gather(cate_list, self.hist_i)
-    h_emb = tf.concat([
+    hc = tf.gather(cate_list, self.hist_i)  # get the history items' category before item i
+    h_emb = tf.concat([   # concat history item emb and category emb together
         tf.nn.embedding_lookup(item_emb_w, self.hist_i),
         tf.nn.embedding_lookup(cate_emb_w, hc),
         ], axis=2)
 
-    hist =attention(i_emb, h_emb, self.sl)
+    hist =attention(i_emb, h_emb, self.sl)  # attention of history embedding(h_emb) on item i(i_emb)
     #-- attention end ---
     
-    hist = tf.layers.batch_normalization(inputs = hist)
+    hist = tf.layers.batch_normalization(inputs=hist)
     hist = tf.reshape(hist, [-1, hidden_units])
     hist = tf.layers.dense(hist, hidden_units)
 
@@ -170,35 +170,35 @@ def extract_axis_1(data, ind):
   res = tf.gather_nd(data, indices)
   return res
 
-def attention(queries, keys, keys_length):
+def attention(queries, keys, keys_length):  # attention(i_emb, h_emb, self.sl)
   '''
-    queries:     [B, H]
-    keys:        [B, T, H]
-    keys_length: [B]
+    queries:     [B, H]: batch_size * emb_size
+    keys:        [B, T, H]: batch_size * max_history_length * emb_size
+    keys_length: [B]: element is history_length of each sample
   '''
-  queries_hidden_units = queries.get_shape().as_list()[-1]
-  queries = tf.tile(queries, [1, tf.shape(keys)[1]])
-  queries = tf.reshape(queries, [-1, tf.shape(keys)[1], queries_hidden_units])
-  din_all = tf.concat([queries, keys, queries-keys, queries*keys], axis=-1)
-  d_layer_1_all = tf.layers.dense(din_all, 80, activation=tf.nn.sigmoid, name='f1_att')
+  queries_hidden_units = queries.get_shape().as_list()[-1]  # H
+  queries = tf.tile(queries, [1, tf.shape(keys)[1]])  # for calculate attention with each history interest
+  queries = tf.reshape(queries, [-1, tf.shape(keys)[1], queries_hidden_units])  # [B, T, H]
+  din_all = tf.concat([queries, keys, queries-keys, queries*keys], axis=-1)  # attention input concatenate
+  d_layer_1_all = tf.layers.dense(din_all, 80, activation=tf.nn.sigmoid, name='f1_att')  # [B, T, 80]
   d_layer_2_all = tf.layers.dense(d_layer_1_all, 40, activation=tf.nn.sigmoid, name='f2_att')
-  d_layer_3_all = tf.layers.dense(d_layer_2_all, 1, activation=None, name='f3_att')
-  d_layer_3_all = tf.reshape(d_layer_3_all, [-1, 1, tf.shape(keys)[1]])
-  outputs = d_layer_3_all 
+  d_layer_3_all = tf.layers.dense(d_layer_2_all, 1, activation=None, name='f3_att')  # output layer not activation
+  d_layer_3_all = tf.reshape(d_layer_3_all, [-1, 1, tf.shape(keys)[1]])  # reshape, exchange dim 2 with dim 3
+  outputs = d_layer_3_all  # [B, 1, T]
   # Mask
   key_masks = tf.sequence_mask(keys_length, tf.shape(keys)[1])   # [B, T]
-  key_masks = tf.expand_dims(key_masks, 1) # [B, 1, T]
-  paddings = tf.ones_like(outputs) * (-2 ** 32 + 1)
-  outputs = tf.where(key_masks, outputs, paddings)  # [B, 1, T]
+  key_masks = tf.expand_dims(key_masks, 1)  # [B, 1, T]  # element true: represent the history list
+  paddings = tf.ones_like(outputs) * (-2 ** 32 + 1)  # [B, 1, T]
+  outputs = tf.where(key_masks, outputs, paddings)  # [B, 1, T] when mask is true, return outputs, else return paddings.
 
   # Scale
-  outputs = outputs / (keys.get_shape().as_list()[-1] ** 0.5)
+  outputs = outputs / (keys.get_shape().as_list()[-1] ** 0.5)  # [B, 1, T]
 
   # Activation
-  outputs = tf.nn.softmax(outputs)  # [B, 1, T]
+  outputs = tf.nn.softmax(outputs)  # [B, 1, T] # item with high interest will has high activate values
 
-  # Weighted sum
-  outputs = tf.matmul(outputs, keys)  # [B, 1, H]
+  # Weighted sum pooling
+  outputs = tf.matmul(outputs, keys)  # [B, 1, H] # get user attention given item
 
   return outputs
 
