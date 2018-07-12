@@ -4,3 +4,8 @@
 .idea/workspace.xml
 raw_data/
 __pycache__/
+base_model/save_path/
+din/save_path/
+deepFM/save_path/
+pnn/save_path/
+wide_deep/save_path/
